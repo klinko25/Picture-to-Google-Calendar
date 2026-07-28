@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screenshot → Calendar</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Archivo+Expanded:wght@700;800&display=swap');
+
+  :root{
+    --ink:#1b1d1f;
+    --paper:#e9e4d4;
+    --paper-dark:#ded7c1;
+    --stamp-red:#a8352a;
+    --agent-green:#3c5b40;
+    --muted:#8a8577;
+    --line:#c7bfa5;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(255,255,255,0.03), transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(255,255,255,0.02), transparent 40%);
+    min-height:100vh;
+    font-family:'IBM Plex Mono', monospace;
+    color:var(--paper);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:48px 20px 80px;
+  }
+  .eyebrow{
+    font-size:11px;
+    letter-spacing:0.25em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:10px;
+  }
+  h1{
+    font-family:'Archivo Expanded', sans-serif;
+    font-weight:800;
+    font-size:clamp(28px,6vw,44px);
+    letter-spacing:-0.01em;
+    margin:0 0 6px;
+    text-align:center;
+    color:var(--paper);
+  }
+  .sub{
+    color:var(--muted);
+    font-size:13px;
+    text-align:center;
+    max-width:420px;
+    margin:0 0 40px;
+    line-height:1.6;
+  }
+
+  .dropzone{
+    width:100%;
+    max-width:480px;
+    border:2px dashed var(--line);
+    border-radius:4px;
+    padding:40px 24px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    background:rgba(255,255,255,0.02);
+  }
+  .dropzone.drag{
+    border-color:var(--stamp-red);
+    background:rgba(168,53,42,0.08);
+  }
+  .dropzone input{display:none;}
+  .dz-icon{
+    font-size:28px;
+    margin-bottom:10px;
+    opacity:0.8;
+  }
+  .dz-text{font-size:13px; color:var(--paper); margin-bottom:4px;}
+  .dz-sub{font-size:11px; color:var(--muted);}
+  .btn{
+    font-family:'IBM Plex Mono',monospace;
+    font-weight:600;
+    font-size:12px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    border:none;
+    border-radius:2px;
+    padding:12px 20px;
+    cursor:pointer;
+    transition:transform .1s ease, opacity .15s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{
+    background:var(--paper);
+    color:var(--ink);
+    margin-top:16px;
+  }
+  .btn-primary:hover{opacity:0.9;}
+  .btn:disabled{opacity:0.4; cursor:not-allowed;}
+
+  .preview-thumb{
+    max-width:120px;
+    max-height:120px;
+    border-radius:3px;
+    margin-bottom:14px;
+    border:1px solid var(--line);
+  }
+
+  .status{
+    margin-top:18px;
+    font-size:12px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .spinner{
+    width:12px;height:12px;
+    border:2px solid var(--muted);
+    border-top-color:var(--paper);
+    border-radius:50%;
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .error{
+    margin-top:16px;
+    font-size:12px;
+    color:var(--stamp-red);
+    max-width:420px;
+    text-align:center;
+  }
+
+  /* Ticket */
+  .ticket-wrap{
+    margin-top:44px;
+    opacity:0;
+    transform:translateY(14px) rotate(0deg);
+  }
+  .ticket-wrap.show{
+    animation:stamp-in .38s cubic-bezier(.2,.8,.3,1) forwards;
+  }
+  @keyframes stamp-in{
+    0%{opacity:0; transform:translateY(14px) rotate(0deg) scale(0.98);}
+    60%{opacity:1; transform:translateY(-2px) rotate(-0.6deg) scale(1.01);}
+    100%{opacity:1; transform:translateY(0) rotate(-0.6deg) scale(1);}
+  }
+
+  .ticket{
+    width:340px;
+    background:var(--paper);
+    color:var(--ink);
+    border-radius:6px;
+    box-shadow:0 24px 48px rgba(0,0,0,0.45);
+    position:relative;
+    overflow:visible;
+  }
+  .ticket-top{
+    padding:22px 22px 18px;
+  }
+  .admit{
+    font-size:10px;
+    letter-spacing:0.22em;
+    color:var(--agent-green);
+    font-weight:700;
+    margin-bottom:10px;
+  }
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block;
+    font-size:9px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:4px;
+  }
+  .field input{
+    width:100%;
+    background:transparent;
+    border:none;
+    border-bottom:1px solid var(--line);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:14px;
+    font-weight:600;
+    color:var(--ink);
+    padding:2px 0 4px;
+  }
+  .field input:focus{
+    outline:none;
+    border-bottom-color:var(--stamp-red);
+  }
+  .row-2{display:flex; gap:14px;}
+  .row-2 .field{flex:1;}
+
+  .perf{
+    position:relative;
+    height:0;
+    border-top:2px dashed var(--paper-dark);
+    margin:0 0;
+  }
+  .perf::before, .perf::after{
+    content:'';
+    position:absolute;
+    top:-11px;
+    width:22px;height:22px;
+    background:var(--ink);
+    border-radius:50%;
+  }
+  .perf::before{left:-11px;}
+  .perf::after{right:-11px;}
+
+  .ticket-bottom{
+    padding:18px 22px 24px;
+    text-align:center;
+  }
+  .cal-btn{
+    width:100%;
+    background:var(--stamp-red);
+    color:#fff;
+    font-family:'IBM Plex Mono',monospace;
+    font-weight:700;
+    font-size:12px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    border:none;
+    border-radius:3px;
+    padding:14px;
+    cursor:pointer;
+    transition:transform .1s ease, opacity .15s ease;
+  }
+  .cal-btn:hover{opacity:0.92;}
+  .cal-btn:active{transform:scale(0.98);}
+  .tz-note{
+    font-size:10px;
+    color:var(--muted);
+    margin-top:10px;
+  }
+
+  .reset-link{
+    margin-top:26px;
+    font-size:11px;
+    color:var(--muted);
+    text-decoration:underline;
+    cursor:pointer;
+    background:none;
+    border:none;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .reset-link:hover{color:var(--paper);}
+</style>
+</head>
+<body>
+
+  <div class="eyebrow">Screenshot → Calendar</div>
+  <h1>Read the flyer.<br>Skip the typing.</h1>
+  <p class="sub">Upload a screenshot of an invite, ticket, or event post. It reads the date, time, and location, then hands you a ready-to-confirm calendar entry.</p>
+
+  <div class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept="image/*">
+    <div id="dzContent">
+      <div class="dz-icon">▤</div>
+      <div class="dz-text">Tap to choose a screenshot, or drop one here</div>
+      <div class="dz-sub">JPG or PNG</div>
+    </div>
+  </div>
+
+  <div id="statusArea"></div>
+  <div id="errorArea"></div>
+
+  <div class="ticket-wrap" id="ticketWrap">
+    <div class="ticket">
+      <div class="ticket-top">
+        <div class="admit">✦ Event Detected</div>
+        <div class="field">
+          <label>Title</label>
+          <input type="text" id="f-title" value="">
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" id="f-date" value="">
+          </div>
+          <div class="field">
+            <label>Start</label>
+            <input type="time" id="f-start" value="">
+          </div>
+          <div class="field">
+            <label>End</label>
+            <input type="time" id="f-end" value="">
+          </div>
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <input type="text" id="f-location" value="">
+        </div>
+      </div>
+      <div class="perf"></div>
+      <div class="ticket-bottom">
+        <button class="cal-btn" id="addBtn">Add to Calendar</button>
+        <div class="tz-note" id="tzNote"></div>
+        <div class="tz-note">This opens the iOS share sheet — choose Mail (send to yourself and tap Accept in the message) for the most reliable result, or Save to Files.</div>
+      </div>
+    </div>
+    <button class="reset-link" id="resetBtn">Start over with a new screenshot</button>
+  </div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const dzContent = document.getElementById('dzContent');
+const statusArea = document.getElementById('statusArea');
+const errorArea = document.getElementById('errorArea');
+const ticketWrap = document.getElementById('ticketWrap');
+const addBtn = document.getElementById('addBtn');
+const resetBtn = document.getElementById('resetBtn');
+const tzNote = document.getElementById('tzNote');
+
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+tzNote.textContent = `Opens in your calendar as ${tz}`;
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    handleFile(e.dataTransfer.files[0]);
+  }
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+
+function setStatus(msg, spinning) {
+  if (!msg) { statusArea.innerHTML = ''; return; }
+  statusArea.innerHTML = `<div class="status">${spinning ? '<div class="spinner"></div>' : ''}<span>${msg}</span></div>`;
+}
+function setError(msg) {
+  errorArea.innerHTML = msg ? `<div class="error">${msg}</div>` : '';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = () => reject(new Error('Could not read that file.'));
+    r.readAsDataURL(file);
+  });
+}
+
+// iPhone screenshots are large, high-res PNGs (sometimes HEIC). Resize + re-encode
+// as JPEG in the browser so the request stays small and the format is always supported.
+function resizeToJpegBase64(file, maxDim = 1568, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read that file. Try a different screenshot."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+          else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = () => {
+        reject(new Error("This browser couldn't decode that image format. If it's a HEIC file, try selecting 'Most Compatible' format in iPhone Camera settings, or take a fresh screenshot."));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleFile(file) {
+  setError('');
+  ticketWrap.classList.remove('show');
+  ticketWrap.style.display = 'none';
+
+  if (!file.type.startsWith('image/')) {
+    setError("That doesn't look like an image. Try a screenshot (JPG or PNG).");
+    return;
+  }
+
+  dzContent.innerHTML = `<img class="preview-thumb" id="previewImg"><div class="dz-sub">Tap to choose a different image</div>`;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('previewImg').src = e.target.result; };
+  reader.readAsDataURL(file);
+
+  setStatus('Reading the screenshot…', true);
+
+  try {
+    const base64 = await resizeToJpegBase64(file);
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0,10);
+
+    let response;
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+              { type: 'text', text: `Today's date is ${todayStr}. Look at this image (a screenshot of an invite, ticket, flyer, or event post) and extract the event details. If a year isn't shown, assume the next upcoming occurrence of that date. If no end time is shown, leave end_time empty. Respond with ONLY raw JSON, no markdown, no code fences, no extra text, in exactly this shape: {"title":"","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM or empty string","location":""}. Use 24-hour time. If you truly cannot find a date/time in the image, set date to an empty string.` }
+            ]
+          }]
+        })
+      });
+    } catch (netErr) {
+      throw new Error('Could not reach the extraction service (network error). Check your connection and try again.');
+    }
+
+    if (!response.ok) {
+      let detail = '';
+      try { const errBody = await response.json(); detail = errBody?.error?.message || ''; } catch {}
+      throw new Error(detail ? `The extraction service said: ${detail}` : `The extraction service had a problem (status ${response.status}). Try again.`);
+    }
+    const data = await response.json();
+    const raw = data.content.map(b => b.text || '').join('').trim();
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(cleaned); }
+    catch { throw new Error("Couldn't make sense of what came back. Try a clearer screenshot."); }
+
+    if (!parsed.date) {
+      setStatus('');
+      setError("Couldn't find a date in that image. You can still fill in the ticket by hand below.");
+    } else {
+      setStatus('');
+    }
+
+    document.getElementById('f-title').value = parsed.title || '';
+    document.getElementById('f-date').value = parsed.date || todayStr;
+    document.getElementById('f-start').value = parsed.start_time || '09:00';
+    let end = parsed.end_time;
+    if (!end) {
+      const [h,m] = (parsed.start_time || '09:00').split(':').map(Number);
+      const endDate = new Date(2000,0,1,h,m);
+      endDate.setHours(endDate.getHours()+1);
+      end = String(endDate.getHours()).padStart(2,'0') + ':' + String(endDate.getMinutes()).padStart(2,'0');
+    }
+    document.getElementById('f-end').value = end;
+    document.getElementById('f-location').value = parsed.location || '';
+
+    ticketWrap.style.display = 'block';
+    requestAnimationFrame(() => ticketWrap.classList.add('show'));
+
+  } catch (err) {
+    setStatus('');
+    setError(err.message || 'Something went wrong reading that screenshot.');
+  }
+}
+
+function pad(n){ return String(n).padStart(2,'0'); }
+
+function icsEscape(str) {
+  return String(str).replace(/\\/g,'\\\\').replace(/,/g,'\\,').replace(/;/g,'\\;').replace(/\n/g,'\\n');
+}
+
+function utf8ToBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+function buildIcsString(title, date, start, end, location) {
+  const dtstart = date.replace(/-/g,'') + 'T' + start.replace(':','') + '00';
+  const dtend = date.replace(/-/g,'') + 'T' + (end || start).replace(':','') + '00';
+  const now = new Date();
+  const dtstamp = now.toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+  const uid = 'stc-' + Date.now() + '@screenshot-to-calendar';
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Screenshot to Calendar//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    'UID:' + uid,
+    'DTSTAMP:' + dtstamp,
+    'DTSTART:' + dtstart,
+    'DTEND:' + dtend,
+    'SUMMARY:' + icsEscape(title),
+  ];
+  if (location) lines.push('LOCATION:' + icsEscape(location));
+  lines.push('END:VEVENT', 'END:VCALENDAR', '');
+
+  return lines.join('\r\n');
+}
+
+function getEventFields() {
+  return {
+    title: document.getElementById('f-title').value || 'Untitled event',
+    date: document.getElementById('f-date').value,
+    start: document.getElementById('f-start').value,
+    end: document.getElementById('f-end').value,
+    location: document.getElementById('f-location').value
+  };
+}
+
+async function handleAddToCalendar() {
+  const { title, date, start, end, location } = getEventFields();
+  if (!date || !start) {
+    setError('Add at least a date and start time before continuing.');
+    return;
+  }
+  setError('');
+
+  const ics = buildIcsString(title, date, start, end, location);
+  const file = new File([ics], 'event.ics', { type: 'text/calendar' });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: title });
+      return;
+    } catch (err) {
+      // User cancelled the share sheet, or share failed — fall through to download.
+      if (err && err.name === 'AbortError') return;
+    }
+  }
+
+  // Fallback: trigger a plain download of the .ics file.
+  const blobUrl = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = 'event.ics';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+}
+
+addBtn.addEventListener('click', handleAddToCalendar);
+
+resetBtn.addEventListener('click', () => {
+  ticketWrap.classList.remove('show');
+  ticketWrap.style.display = 'none';
+  dzContent.innerHTML = `<div class="dz-icon">▤</div><div class="dz-text">Tap to choose a screenshot, or drop one here</div><div class="dz-sub">JPG or PNG</div>`;
+  fileInput.value = '';
+  setStatus('');
+  setError('');
+});
+</script>
+</body>
+</html>
