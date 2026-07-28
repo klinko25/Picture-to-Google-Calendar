@@ -415,36 +415,24 @@ async function handleFile(file) {
 
     let response;
     try {
-      response = await fetch('https://api.anthropic.com/v1/messages', {
+      response = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-              { type: 'text', text: `Today's date is ${todayStr}. Look at this image (a screenshot of an invite, ticket, flyer, or event post) and extract the event details. If a year isn't shown, assume the next upcoming occurrence of that date. If no end time is shown, leave end_time empty. Respond with ONLY raw JSON, no markdown, no code fences, no extra text, in exactly this shape: {"title":"","date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM or empty string","location":""}. Use 24-hour time. If you truly cannot find a date/time in the image, set date to an empty string.` }
-            ]
-          }]
-        })
+        body: JSON.stringify({ image: base64, today: todayStr })
       });
     } catch (netErr) {
       throw new Error('Could not reach the extraction service (network error). Check your connection and try again.');
     }
 
-    if (!response.ok) {
-      let detail = '';
-      try { const errBody = await response.json(); detail = errBody?.error?.message || ''; } catch {}
+    const parsed = await response.json().catch(() => null);
+
+    if (!response.ok || !parsed) {
+      const detail = parsed?.error || '';
       throw new Error(detail ? `The extraction service said: ${detail}` : `The extraction service had a problem (status ${response.status}). Try again.`);
     }
-    const data = await response.json();
-    const raw = data.content.map(b => b.text || '').join('').trim();
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    let parsed;
-    try { parsed = JSON.parse(cleaned); }
-    catch { throw new Error("Couldn't make sense of what came back. Try a clearer screenshot."); }
+    if (parsed.error) {
+      throw new Error(parsed.error);
+    }
 
     if (!parsed.date) {
       setStatus('');
@@ -476,6 +464,9 @@ async function handleFile(file) {
 }
 
 function pad(n){ return String(n).padStart(2,'0'); }
+
+// --- Extraction Worker (keeps the Anthropic key server-side) ---
+const WORKER_URL = 'https://calendar-extract.YOUR-SUBDOMAIN.workers.dev';
 
 // --- Google Sign-In + Calendar API ---
 const CLIENT_ID = '491186992853-poqqscjvsqne73a2pla3ssah5uikjdid.apps.googleusercontent.com';
