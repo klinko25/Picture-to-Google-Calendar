@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Screenshot → Calendar</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Archivo+Expanded:wght@700;800&display=swap');
 
@@ -257,6 +258,13 @@
   <h1>Read the flyer.<br>Skip the typing.</h1>
   <p class="sub">Upload a screenshot of an invite, ticket, or event post. It reads the date, time, and location, then hands you a ready-to-confirm calendar entry.</p>
 
+  <div id="signinArea" style="margin-bottom:32px;">
+    <button class="btn btn-primary" id="signinBtn" style="margin-top:0;">Sign in with Google</button>
+  </div>
+  <div id="signedInNote" style="display:none; font-size:11px; color:var(--muted); margin-bottom:24px;">
+    Signed in as <span id="signedInEmail"></span> · <button id="signoutBtn" style="background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-family:inherit;font-size:11px;">sign out</button>
+  </div>
+
   <div class="dropzone" id="dropzone">
     <input type="file" id="fileInput" accept="image/*">
     <div id="dzContent">
@@ -300,7 +308,6 @@
       <div class="ticket-bottom">
         <button class="cal-btn" id="addBtn">Add to Calendar</button>
         <div class="tz-note" id="tzNote"></div>
-        <div class="tz-note">This opens the iOS share sheet — choose Mail (send to yourself and tap Accept in the message) for the most reliable result, or Save to Files.</div>
       </div>
     </div>
     <button class="reset-link" id="resetBtn">Start over with a new screenshot</button>
@@ -470,39 +477,65 @@ async function handleFile(file) {
 
 function pad(n){ return String(n).padStart(2,'0'); }
 
-function icsEscape(str) {
-  return String(str).replace(/\\/g,'\\\\').replace(/,/g,'\\,').replace(/;/g,'\\;').replace(/\n/g,'\\n');
+// --- Google Sign-In + Calendar API ---
+const CLIENT_ID = '491186992853-poqqscjvsqne73a2pla3ssah5uikjdid.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
+let accessToken = null;
+let tokenClient = null;
+
+const signinBtn = document.getElementById('signinBtn');
+const signinArea = document.getElementById('signinArea');
+const signedInNote = document.getElementById('signedInNote');
+const signedInEmail = document.getElementById('signedInEmail');
+const signoutBtn = document.getElementById('signoutBtn');
+
+function initGoogleAuth() {
+  if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    // Google script hasn't loaded yet — retry shortly.
+    setTimeout(initGoogleAuth, 300);
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) {
+        setError('Sign-in failed: ' + resp.error);
+        return;
+      }
+      accessToken = resp.access_token;
+      onSignedIn();
+    }
+  });
+}
+initGoogleAuth();
+
+signinBtn.addEventListener('click', () => {
+  if (!tokenClient) {
+    setError('Still loading Google Sign-In — try again in a second.');
+    return;
+  }
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+});
+
+function onSignedIn() {
+  signinArea.style.display = 'none';
+  signedInNote.style.display = 'block';
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  }).then(r => r.json()).then(data => {
+    signedInEmail.textContent = data.email || 'Google account';
+  }).catch(() => { signedInEmail.textContent = 'Google account'; });
 }
 
-function utf8ToBase64(str) {
-  return btoa(unescape(encodeURIComponent(str)));
-}
-
-function buildIcsString(title, date, start, end, location) {
-  const dtstart = date.replace(/-/g,'') + 'T' + start.replace(':','') + '00';
-  const dtend = date.replace(/-/g,'') + 'T' + (end || start).replace(':','') + '00';
-  const now = new Date();
-  const dtstamp = now.toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
-  const uid = 'stc-' + Date.now() + '@screenshot-to-calendar';
-
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Screenshot to Calendar//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    'UID:' + uid,
-    'DTSTAMP:' + dtstamp,
-    'DTSTART:' + dtstart,
-    'DTEND:' + dtend,
-    'SUMMARY:' + icsEscape(title),
-  ];
-  if (location) lines.push('LOCATION:' + icsEscape(location));
-  lines.push('END:VEVENT', 'END:VCALENDAR', '');
-
-  return lines.join('\r\n');
-}
+signoutBtn.addEventListener('click', () => {
+  if (accessToken && window.google) {
+    google.accounts.oauth2.revoke(accessToken, () => {});
+  }
+  accessToken = null;
+  signinArea.style.display = 'block';
+  signedInNote.style.display = 'none';
+});
 
 function getEventFields() {
   return {
@@ -520,30 +553,42 @@ async function handleAddToCalendar() {
     setError('Add at least a date and start time before continuing.');
     return;
   }
-  setError('');
-
-  const ics = buildIcsString(title, date, start, end, location);
-  const file = new File([ics], 'event.ics', { type: 'text/calendar' });
-
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: title });
-      return;
-    } catch (err) {
-      // User cancelled the share sheet, or share failed — fall through to download.
-      if (err && err.name === 'AbortError') return;
-    }
+  if (!accessToken) {
+    setError('Sign in with Google first (button near the top), then try again.');
+    return;
   }
+  setError('');
+  addBtn.disabled = true;
+  const originalLabel = addBtn.textContent;
+  addBtn.textContent = 'Adding…';
 
-  // Fallback: trigger a plain download of the .ics file.
-  const blobUrl = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-  const a = document.createElement('a');
-  a.href = blobUrl;
-  a.download = 'event.ics';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+  try {
+    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + accessToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        summary: title,
+        location: location || undefined,
+        start: { dateTime: `${date}T${start}:00`, timeZone: tz },
+        end: { dateTime: `${date}T${(end || start)}:00`, timeZone: tz }
+      })
+    });
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody?.error?.message || `Could not create the event (status ${res.status}).`);
+    }
+
+    addBtn.textContent = '✓ Added';
+    setTimeout(() => { addBtn.textContent = originalLabel; addBtn.disabled = false; }, 2500);
+  } catch (err) {
+    setError(err.message || 'Could not create the event.');
+    addBtn.textContent = originalLabel;
+    addBtn.disabled = false;
+  }
 }
 
 addBtn.addEventListener('click', handleAddToCalendar);
