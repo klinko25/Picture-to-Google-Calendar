@@ -573,8 +573,17 @@ async function handleAddToCalendar() {
       throw new Error(errBody?.error?.message || `Could not create the event (status ${res.status}).`);
     }
 
+    const created = await res.json();
+
     addBtn.textContent = '✓ Added';
     setTimeout(() => { addBtn.textContent = originalLabel; addBtn.disabled = false; }, 2500);
+
+    // Open the newly created event directly. On iOS this opens the Google
+    // Calendar app (if installed) showing the event, already populated;
+    // otherwise it falls back to the Calendar web view.
+    if (created.htmlLink) {
+      window.location.href = created.htmlLink;
+    }
   } catch (err) {
     setError(err.message || 'Could not create the event.');
     addBtn.textContent = originalLabel;
