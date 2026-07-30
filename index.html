@@ -307,6 +307,7 @@
       <div class="perf"></div>
       <div class="ticket-bottom">
         <button class="cal-btn" id="addBtn">Add to Calendar</button>
+        <a class="cal-btn" id="openLink" href="#" target="_blank" rel="noopener" style="display:none; text-align:center; text-decoration:none;">Open in Google Calendar</a>
         <div class="tz-note" id="tzNote"></div>
       </div>
     </div>
@@ -321,6 +322,7 @@ const statusArea = document.getElementById('statusArea');
 const errorArea = document.getElementById('errorArea');
 const ticketWrap = document.getElementById('ticketWrap');
 const addBtn = document.getElementById('addBtn');
+const openLink = document.getElementById('openLink');
 const resetBtn = document.getElementById('resetBtn');
 const tzNote = document.getElementById('tzNote');
 
@@ -576,13 +578,16 @@ async function handleAddToCalendar() {
     const created = await res.json();
 
     addBtn.textContent = '✓ Added';
-    setTimeout(() => { addBtn.textContent = originalLabel; addBtn.disabled = false; }, 2500);
+    addBtn.style.display = 'none';
 
-    // Open the newly created event directly. On iOS this opens the Google
-    // Calendar app (if installed) showing the event, already populated;
-    // otherwise it falls back to the Calendar web view.
+    // Don't auto-navigate here — iOS only hands off to the Google Calendar
+    // app for a link the person actually taps themselves (a "trusted" user
+    // gesture). A programmatic redirect after this async fetch doesn't
+    // qualify, so it silently opens in Safari instead. Showing a real link
+    // and letting them tap it keeps the app handoff working.
     if (created.htmlLink) {
-      window.location.href = created.htmlLink;
+      openLink.href = created.htmlLink;
+      openLink.style.display = 'block';
     }
   } catch (err) {
     setError(err.message || 'Could not create the event.');
@@ -600,6 +605,10 @@ resetBtn.addEventListener('click', () => {
   fileInput.value = '';
   setStatus('');
   setError('');
+  addBtn.textContent = 'Add to Calendar';
+  addBtn.style.display = 'block';
+  addBtn.disabled = false;
+  openLink.style.display = 'none';
 });
 </script>
 </body>
