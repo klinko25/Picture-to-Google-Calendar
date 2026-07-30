@@ -342,6 +342,72 @@
     color:#fff;
   }
   .chip:hover{border-color:var(--stamp-red);}
+
+  .allday-toggle{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:11px;
+    color:var(--muted);
+    margin:-6px 0 14px;
+    cursor:pointer;
+  }
+  .allday-toggle input{
+    accent-color:var(--stamp-red);
+    cursor:pointer;
+  }
+
+  .custom-reminder-row{
+    display:flex;
+    gap:6px;
+    margin-top:8px;
+    align-items:center;
+  }
+  .custom-reminder-row input[type="number"]{
+    width:70px;
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--ink);
+    padding:6px 8px;
+  }
+  .custom-reminder-row input[type="number"]:focus{
+    outline:none;
+    border-color:var(--stamp-red);
+  }
+  .custom-reminder-row select{
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--ink);
+    padding:6px 4px;
+  }
+  .add-reminder-btn{
+    background:var(--agent-green);
+    color:#fff;
+    border:none;
+    border-radius:3px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    padding:7px 12px;
+    cursor:pointer;
+  }
+  .add-reminder-btn:hover{opacity:0.88;}
+
+  .buffer-hint{
+    font-size:9px;
+    text-transform:none;
+    letter-spacing:0;
+    color:var(--muted);
+    font-weight:400;
+  }
 </style>
 </head>
 <body>
@@ -382,18 +448,36 @@
             <label>Date</label>
             <input type="date" id="f-date" value="">
           </div>
-          <div class="field">
+          <div class="field" id="startField">
             <label>Start</label>
-            <input type="time" id="f-start" value="">
+            <select id="f-start"></select>
           </div>
-          <div class="field">
+          <div class="field" id="endField">
             <label>End</label>
-            <input type="time" id="f-end" value="">
+            <select id="f-end"></select>
           </div>
         </div>
+        <label class="allday-toggle">
+          <input type="checkbox" id="f-allday">
+          All-day event
+        </label>
         <div class="field">
           <label>Location</label>
           <input type="text" id="f-location" value="">
+        </div>
+
+        <div class="field" id="bufferField">
+          <label>Buffer Time <span class="buffer-hint">(shifts the start earlier, for travel/prep)</span></label>
+          <div class="chip-row" id="bufferRow">
+            <button type="button" class="chip selected" data-buffer="0">None</button>
+            <button type="button" class="chip" data-buffer="30">30 min</button>
+            <button type="button" class="chip" data-buffer="60">60 min</button>
+            <button type="button" class="chip" data-buffer="custom">Custom</button>
+          </div>
+          <div class="custom-reminder-row" id="customBufferRow" style="display:none;">
+            <input type="number" id="customBufferValue" min="1" placeholder="minutes">
+            <span class="buffer-hint">minutes early</span>
+          </div>
         </div>
 
         <button type="button" class="more-toggle" id="moreToggle">+ More options</button>
@@ -430,6 +514,15 @@
               <button type="button" class="chip" data-mins="60">1 hour</button>
               <button type="button" class="chip" data-mins="1440">1 day</button>
               <button type="button" class="chip" data-mins="10080">1 week</button>
+            </div>
+            <div class="custom-reminder-row">
+              <input type="number" id="customReminderValue" min="1" placeholder="e.g. 45">
+              <select id="customReminderUnit">
+                <option value="minutes">minutes</option>
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+              </select>
+              <button type="button" class="add-reminder-btn" id="addCustomReminder">Add</button>
             </div>
           </div>
 
@@ -507,8 +600,169 @@ reminderRow.addEventListener('click', (e) => {
   }
 });
 
+// --- All-day toggle ---
+const alldayCheckbox = document.getElementById('f-allday');
+const startField = document.getElementById('startField');
+const endField = document.getElementById('endField');
+alldayCheckbox.addEventListener('change', () => {
+  const isAllDay = alldayCheckbox.checked;
+  startField.style.display = isAllDay ? 'none' : 'block';
+  endField.style.display = isAllDay ? 'none' : 'block';
+  document.getElementById('bufferField').style.display = isAllDay ? 'none' : 'block';
+});
+
+// --- Custom reminder input ---
+const customReminderValue = document.getElementById('customReminderValue');
+const customReminderUnit = document.getElementById('customReminderUnit');
+const addCustomReminderBtn = document.getElementById('addCustomReminder');
+const MAX_REMINDER_MINUTES = 40320; // Google Calendar's cap: 4 weeks before
+
+function unitToMinutes(value, unit) {
+  if (unit === 'hours') return value * 60;
+  if (unit === 'days') return value * 60 * 24;
+  return value;
+}
+
+addCustomReminderBtn.addEventListener('click', () => {
+  const rawValue = Number(customReminderValue.value);
+  if (!rawValue || rawValue <= 0) {
+    setError('Enter a reminder time greater than 0.');
+    return;
+  }
+  const mins = Math.round(unitToMinutes(rawValue, customReminderUnit.value));
+  if (mins > MAX_REMINDER_MINUTES) {
+    setError('Google Calendar reminders can be set at most 4 weeks before an event.');
+    return;
+  }
+  setError('');
+
+  if (selectedReminders.has(mins)) {
+    customReminderValue.value = '';
+    return; // already selected, nothing more to do
+  }
+  selectedReminders.add(mins);
+
+  let label;
+  if (mins % (60 * 24) === 0) label = `${mins / (60*24)} day${mins === 60*24 ? '' : 's'}`;
+  else if (mins % 60 === 0) label = `${mins / 60} hr`;
+  else label = `${mins} min`;
+
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'chip selected';
+  chip.dataset.mins = mins;
+  chip.dataset.custom = 'true';
+  chip.textContent = label;
+  reminderRow.appendChild(chip);
+
+  customReminderValue.value = '';
+});
+
+// --- Buffer Time (shifts the event's start earlier, e.g. for travel) ---
+const bufferRow = document.getElementById('bufferRow');
+const customBufferRow = document.getElementById('customBufferRow');
+const customBufferValue = document.getElementById('customBufferValue');
+const fStartEl = document.getElementById('f-start');
+const fDateEl = document.getElementById('f-date');
+
+// The "real" event start/date as extracted (or as last manually edited) --
+// buffer amounts are always computed relative to this, never compounded
+// on top of a previously-applied buffer.
+let baseStartTime = null;
+let baseDate = null;
+
+function resetBufferSelection() {
+  bufferRow.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+  bufferRow.querySelector('.chip[data-buffer="0"]').classList.add('selected');
+  customBufferRow.style.display = 'none';
+  customBufferValue.value = '';
+}
+
+function applyBuffer(minutes) {
+  if (!baseStartTime || !baseDate) return;
+  if (!minutes) {
+    fStartEl.value = baseStartTime;
+    fDateEl.value = baseDate;
+    return;
+  }
+  const [by, bm, bd] = baseDate.split('-').map(Number);
+  const [bh, bmin] = baseStartTime.split(':').map(Number);
+  const dt = new Date(Date.UTC(by, bm - 1, bd, bh, bmin));
+  dt.setUTCMinutes(dt.getUTCMinutes() - minutes);
+
+  fDateEl.value = dt.toISOString().slice(0, 10);
+  fStartEl.value = roundTo15(
+    `${String(dt.getUTCHours()).padStart(2,'0')}:${String(dt.getUTCMinutes()).padStart(2,'0')}`
+  );
+}
+
+bufferRow.addEventListener('click', (e) => {
+  const btn = e.target.closest('.chip');
+  if (!btn) return;
+  bufferRow.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+  btn.classList.add('selected');
+
+  if (btn.dataset.buffer === 'custom') {
+    customBufferRow.style.display = 'flex';
+    customBufferValue.focus();
+  } else {
+    customBufferRow.style.display = 'none';
+    applyBuffer(Number(btn.dataset.buffer));
+  }
+});
+
+customBufferValue.addEventListener('input', () => {
+  const val = Number(customBufferValue.value);
+  if (val > 0) applyBuffer(val);
+});
+
+// If the person manually edits Start or Date themselves, treat that as
+// the new "real" start -- clear any applied buffer rather than silently
+// re-applying it on top of their edit.
+fStartEl.addEventListener('change', () => {
+  baseStartTime = fStartEl.value;
+  baseDate = fDateEl.value;
+  resetBufferSelection();
+});
+fDateEl.addEventListener('change', () => {
+  baseDate = fDateEl.value;
+  baseStartTime = fStartEl.value;
+  resetBufferSelection();
+});
+
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 tzNote.textContent = `Opens in your calendar as ${tz}`;
+
+// Build a Google-Calendar-style time dropdown: 15-minute increments,
+// value stored as 24-hour "HH:MM", label shown as 12-hour with AM/PM.
+function buildTimeOptions(selectEl) {
+  let html = '';
+  for (let mins = 0; mins < 24 * 60; mins += 15) {
+    const h24 = Math.floor(mins / 60);
+    const m = mins % 60;
+    const value = `${String(h24).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    const period = h24 < 12 ? 'AM' : 'PM';
+    let h12 = h24 % 12;
+    if (h12 === 0) h12 = 12;
+    const label = `${h12}:${String(m).padStart(2,'0')} ${period}`;
+    html += `<option value="${value}">${label}</option>`;
+  }
+  selectEl.innerHTML = html;
+}
+buildTimeOptions(document.getElementById('f-start'));
+buildTimeOptions(document.getElementById('f-end'));
+
+// Round to the nearest 15-minute mark so a value always matches
+// one of the dropdown's generated options.
+function roundTo15(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  let totalMins = h * 60 + m;
+  totalMins = Math.round(totalMins / 15) * 15;
+  totalMins = ((totalMins % (24 * 60)) + 24 * 60) % (24 * 60); // wrap 23:59->00:00 if rounded up
+  const rh = Math.floor(totalMins / 60);
+  const rm = totalMins % 60;
+  return `${String(rh).padStart(2,'0')}:${String(rm).padStart(2,'0')}`;
+}
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
@@ -626,7 +880,7 @@ async function handleFile(file) {
 
     document.getElementById('f-title').value = parsed.title || '';
     document.getElementById('f-date').value = parsed.date || todayStr;
-    document.getElementById('f-start').value = parsed.start_time || '09:00';
+    document.getElementById('f-start').value = roundTo15(parsed.start_time || '09:00');
     let end = parsed.end_time;
     if (!end) {
       const [h,m] = (parsed.start_time || '09:00').split(':').map(Number);
@@ -634,9 +888,15 @@ async function handleFile(file) {
       endDate.setHours(endDate.getHours()+1);
       end = String(endDate.getHours()).padStart(2,'0') + ':' + String(endDate.getMinutes()).padStart(2,'0');
     }
-    document.getElementById('f-end').value = end;
+    document.getElementById('f-end').value = roundTo15(end);
     document.getElementById('f-location').value = parsed.location || '';
     document.getElementById('f-description').value = parsed.description || '';
+
+    // The buffer feature shifts start time earlier relative to this
+    // "real" extracted start -- reset it whenever a new screenshot loads.
+    baseStartTime = document.getElementById('f-start').value;
+    baseDate = document.getElementById('f-date').value;
+    resetBufferSelection();
 
     ticketWrap.style.display = 'block';
     requestAnimationFrame(() => ticketWrap.classList.add('show'));
@@ -721,14 +981,15 @@ function getEventFields() {
     location: document.getElementById('f-location').value,
     description: document.getElementById('f-description').value,
     transparency: document.getElementById('f-transparency').value,
-    visibility: document.getElementById('f-visibility').value
+    visibility: document.getElementById('f-visibility').value,
+    allDay: document.getElementById('f-allday').checked
   };
 }
 
 async function handleAddToCalendar() {
-  const { title, date, start, end, location, description, transparency, visibility } = getEventFields();
-  if (!date || !start) {
-    setError('Add at least a date and start time before continuing.');
+  const { title, date, start, end, location, description, transparency, visibility, allDay } = getEventFields();
+  if (!date || (!allDay && !start)) {
+    setError('Add at least a date' + (allDay ? '' : ' and start time') + ' before continuing.');
     return;
   }
   if (!accessToken) {
@@ -745,6 +1006,21 @@ async function handleAddToCalendar() {
     ? { useDefault: false, overrides: reminderMinutes.map(m => ({ method: 'popup', minutes: m })) }
     : { useDefault: true };
 
+  // All-day events use date-only start/end (no time, no timezone). Google
+  // Calendar's API treats the end date as exclusive, so a single-day
+  // all-day event needs end.date to be the day AFTER the event's date.
+  let startPayload, endPayload;
+  if (allDay) {
+    const [y, m, d] = date.split('-').map(Number);
+    const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
+    const endDateStr = nextDay.toISOString().slice(0, 10);
+    startPayload = { date: date };
+    endPayload = { date: endDateStr };
+  } else {
+    startPayload = { dateTime: `${date}T${start}:00`, timeZone: tz };
+    endPayload = { dateTime: `${date}T${(end || start)}:00`, timeZone: tz };
+  }
+
   try {
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
@@ -760,8 +1036,8 @@ async function handleAddToCalendar() {
         transparency: transparency,
         visibility: visibility,
         reminders: reminders,
-        start: { dateTime: `${date}T${start}:00`, timeZone: tz },
-        end: { dateTime: `${date}T${(end || start)}:00`, timeZone: tz }
+        start: startPayload,
+        end: endPayload
       })
     });
 
@@ -811,10 +1087,21 @@ resetBtn.addEventListener('click', () => {
   colorRow.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
   colorRow.querySelector('.color-swatch[data-color=""]').classList.add('selected');
   selectedColorId = '';
+  reminderRow.querySelectorAll('.chip[data-custom="true"]').forEach(c => c.remove());
   reminderRow.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
   selectedReminders.clear();
+  customReminderValue.value = '';
   moreOptions.style.display = 'none';
   moreToggle.textContent = '+ More options';
+
+  alldayCheckbox.checked = false;
+  startField.style.display = 'block';
+  endField.style.display = 'block';
+  document.getElementById('bufferField').style.display = 'block';
+
+  baseStartTime = null;
+  baseDate = null;
+  resetBufferSelection();
 });
 </script>
 </body>
