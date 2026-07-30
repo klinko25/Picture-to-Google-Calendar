@@ -250,6 +250,98 @@
     font-family:'IBM Plex Mono',monospace;
   }
   .reset-link:hover{color:var(--paper);}
+
+  .more-toggle{
+    background:none;
+    border:none;
+    color:var(--agent-green);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:0.06em;
+    cursor:pointer;
+    padding:4px 0 10px;
+  }
+  .more-toggle:hover{opacity:0.75;}
+
+  .more-options{
+    padding-top:4px;
+    border-top:1px dashed var(--paper-dark);
+  }
+  .field textarea{
+    width:100%;
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    color:var(--ink);
+    padding:6px 8px;
+    resize:vertical;
+  }
+  .field textarea:focus{
+    outline:none;
+    border-color:var(--stamp-red);
+  }
+  .field select{
+    width:100%;
+    background:transparent;
+    border:none;
+    border-bottom:1px solid var(--line);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink);
+    padding:4px 0;
+  }
+  .field select:focus{
+    outline:none;
+    border-bottom-color:var(--stamp-red);
+  }
+
+  .color-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:4px;
+  }
+  .color-swatch{
+    width:24px;
+    height:24px;
+    border-radius:50%;
+    border:2px solid transparent;
+    cursor:pointer;
+    padding:0;
+  }
+  .color-swatch.selected{
+    border-color:var(--ink);
+    box-shadow:0 0 0 1px var(--paper);
+  }
+
+  .chip-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:4px;
+  }
+  .chip{
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:20px;
+    color:var(--ink);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    font-weight:600;
+    padding:6px 12px;
+    cursor:pointer;
+    transition:background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .chip.selected{
+    background:var(--agent-green);
+    border-color:var(--agent-green);
+    color:#fff;
+  }
+  .chip:hover{border-color:var(--stamp-red);}
 </style>
 </head>
 <body>
@@ -303,6 +395,62 @@
           <label>Location</label>
           <input type="text" id="f-location" value="">
         </div>
+
+        <button type="button" class="more-toggle" id="moreToggle">+ More options</button>
+
+        <div class="more-options" id="moreOptions" style="display:none;">
+          <div class="field">
+            <label>Description</label>
+            <textarea id="f-description" rows="3"></textarea>
+          </div>
+
+          <div class="field">
+            <label>Color</label>
+            <div class="color-row" id="colorRow">
+              <button type="button" class="color-swatch selected" data-color="" style="background:var(--paper-dark);" title="Default"></button>
+              <button type="button" class="color-swatch" data-color="1" style="background:#7986cb;" title="Lavender"></button>
+              <button type="button" class="color-swatch" data-color="2" style="background:#33b679;" title="Sage"></button>
+              <button type="button" class="color-swatch" data-color="3" style="background:#8e24aa;" title="Grape"></button>
+              <button type="button" class="color-swatch" data-color="4" style="background:#e67c73;" title="Flamingo"></button>
+              <button type="button" class="color-swatch" data-color="5" style="background:#f6bf26;" title="Banana"></button>
+              <button type="button" class="color-swatch" data-color="6" style="background:#f4511e;" title="Tangerine"></button>
+              <button type="button" class="color-swatch" data-color="7" style="background:#039be5;" title="Peacock"></button>
+              <button type="button" class="color-swatch" data-color="8" style="background:#616161;" title="Graphite"></button>
+              <button type="button" class="color-swatch" data-color="9" style="background:#3f51b5;" title="Blueberry"></button>
+              <button type="button" class="color-swatch" data-color="10" style="background:#0b8043;" title="Basil"></button>
+              <button type="button" class="color-swatch" data-color="11" style="background:#d50000;" title="Tomato"></button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Reminders</label>
+            <div class="chip-row" id="reminderRow">
+              <button type="button" class="chip" data-mins="10">10 min</button>
+              <button type="button" class="chip" data-mins="30">30 min</button>
+              <button type="button" class="chip" data-mins="60">1 hour</button>
+              <button type="button" class="chip" data-mins="1440">1 day</button>
+              <button type="button" class="chip" data-mins="10080">1 week</button>
+            </div>
+          </div>
+
+          <div class="row-2">
+            <div class="field">
+              <label>Show as</label>
+              <select id="f-transparency">
+                <option value="opaque">Busy</option>
+                <option value="transparent">Free</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Visibility</label>
+              <select id="f-visibility">
+                <option value="default">Default</option>
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="perf"></div>
       <div class="ticket-bottom">
@@ -325,6 +473,39 @@ const addBtn = document.getElementById('addBtn');
 const openLink = document.getElementById('openLink');
 const resetBtn = document.getElementById('resetBtn');
 const tzNote = document.getElementById('tzNote');
+const moreToggle = document.getElementById('moreToggle');
+const moreOptions = document.getElementById('moreOptions');
+const colorRow = document.getElementById('colorRow');
+const reminderRow = document.getElementById('reminderRow');
+
+moreToggle.addEventListener('click', () => {
+  const isOpen = moreOptions.style.display !== 'none';
+  moreOptions.style.display = isOpen ? 'none' : 'block';
+  moreToggle.textContent = isOpen ? '+ More options' : '− Fewer options';
+});
+
+let selectedColorId = ''; // '' = default calendar color
+colorRow.addEventListener('click', (e) => {
+  const btn = e.target.closest('.color-swatch');
+  if (!btn) return;
+  colorRow.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedColorId = btn.dataset.color;
+});
+
+const selectedReminders = new Set(); // minutes-before values
+reminderRow.addEventListener('click', (e) => {
+  const btn = e.target.closest('.chip');
+  if (!btn) return;
+  const mins = Number(btn.dataset.mins);
+  if (selectedReminders.has(mins)) {
+    selectedReminders.delete(mins);
+    btn.classList.remove('selected');
+  } else {
+    selectedReminders.add(mins);
+    btn.classList.add('selected');
+  }
+});
 
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 tzNote.textContent = `Opens in your calendar as ${tz}`;
@@ -455,6 +636,7 @@ async function handleFile(file) {
     }
     document.getElementById('f-end').value = end;
     document.getElementById('f-location').value = parsed.location || '';
+    document.getElementById('f-description').value = parsed.description || '';
 
     ticketWrap.style.display = 'block';
     requestAnimationFrame(() => ticketWrap.classList.add('show'));
@@ -536,12 +718,15 @@ function getEventFields() {
     date: document.getElementById('f-date').value,
     start: document.getElementById('f-start').value,
     end: document.getElementById('f-end').value,
-    location: document.getElementById('f-location').value
+    location: document.getElementById('f-location').value,
+    description: document.getElementById('f-description').value,
+    transparency: document.getElementById('f-transparency').value,
+    visibility: document.getElementById('f-visibility').value
   };
 }
 
 async function handleAddToCalendar() {
-  const { title, date, start, end, location } = getEventFields();
+  const { title, date, start, end, location, description, transparency, visibility } = getEventFields();
   if (!date || !start) {
     setError('Add at least a date and start time before continuing.');
     return;
@@ -555,6 +740,11 @@ async function handleAddToCalendar() {
   const originalLabel = addBtn.textContent;
   addBtn.textContent = 'Adding…';
 
+  const reminderMinutes = Array.from(selectedReminders);
+  const reminders = reminderMinutes.length
+    ? { useDefault: false, overrides: reminderMinutes.map(m => ({ method: 'popup', minutes: m })) }
+    : { useDefault: true };
+
   try {
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
@@ -565,6 +755,11 @@ async function handleAddToCalendar() {
       body: JSON.stringify({
         summary: title,
         location: location || undefined,
+        description: description || undefined,
+        colorId: selectedColorId || undefined,
+        transparency: transparency,
+        visibility: visibility,
+        reminders: reminders,
         start: { dateTime: `${date}T${start}:00`, timeZone: tz },
         end: { dateTime: `${date}T${(end || start)}:00`, timeZone: tz }
       })
@@ -609,6 +804,17 @@ resetBtn.addEventListener('click', () => {
   addBtn.style.display = 'block';
   addBtn.disabled = false;
   openLink.style.display = 'none';
+
+  document.getElementById('f-description').value = '';
+  document.getElementById('f-transparency').value = 'opaque';
+  document.getElementById('f-visibility').value = 'default';
+  colorRow.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+  colorRow.querySelector('.color-swatch[data-color=""]').classList.add('selected');
+  selectedColorId = '';
+  reminderRow.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+  selectedReminders.clear();
+  moreOptions.style.display = 'none';
+  moreToggle.textContent = '+ More options';
 });
 </script>
 </body>
