@@ -195,6 +195,11 @@
   .row-2{display:flex; gap:14px;}
   .row-2 .field{flex:1;}
 
+  #homeAddress{
+    color:var(--paper);
+    border-bottom-color:var(--muted);
+  }
+
   .perf{
     position:relative;
     height:0;
@@ -906,16 +911,18 @@ async function handleFile(file) {
     resetBufferSelection();
 
     // If the Worker resolved a drive time from the home address, offer it
-    // as a one-tap buffer option alongside the preset 30/60/Custom chips.
-    bufferRow.querySelectorAll('.chip[data-auto="true"]').forEach(c => c.remove());
+    // as a one-tap reminder option ("leave by X") alongside the preset
+    // reminder chips -- this pops a notification rather than shifting
+    // the event's actual start time.
+    reminderRow.querySelectorAll('.chip[data-auto="true"]').forEach(c => c.remove());
     if (parsed.driveMinutes) {
       const driveChip = document.createElement('button');
       driveChip.type = 'button';
       driveChip.className = 'chip';
-      driveChip.dataset.buffer = parsed.driveMinutes;
+      driveChip.dataset.mins = parsed.driveMinutes;
       driveChip.dataset.auto = 'true';
       driveChip.textContent = `🚗 Drive (${parsed.driveMinutes}m)`;
-      bufferRow.appendChild(driveChip);
+      reminderRow.appendChild(driveChip);
     }
 
     ticketWrap.style.display = 'block';
@@ -1049,6 +1056,15 @@ async function handleAddToCalendar() {
   addBtn.textContent = 'Adding…';
 
   const reminderMinutes = Array.from(selectedReminders);
+  // Google Calendar's API supports 'popup' and 'email' as reminder
+  // methods -- popup only, per your preference. Google caps total
+  // overrides at 5, so at most 5 distinct reminder times can be selected.
+  if (reminderMinutes.length > 5) {
+    addBtn.disabled = false;
+    addBtn.textContent = originalLabel;
+    setError('Google Calendar allows at most 5 reminder times per event. Deselect a few and try again.');
+    return;
+  }
   const reminders = reminderMinutes.length
     ? { useDefault: false, overrides: reminderMinutes.map(m => ({ method: 'popup', minutes: m })) }
     : { useDefault: true };
@@ -1149,7 +1165,7 @@ resetBtn.addEventListener('click', () => {
   baseStartTime = null;
   baseDate = null;
   resetBufferSelection();
-  bufferRow.querySelectorAll('.chip[data-auto="true"]').forEach(c => c.remove());
+  reminderRow.querySelectorAll('.chip[data-auto="true"]').forEach(c => c.remove());
 });
 </script>
 </body>
