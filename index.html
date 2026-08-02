@@ -408,46 +408,6 @@
     color:var(--muted);
     font-weight:400;
   }
-
-  .home-field{
-    width:100%;
-    max-width:480px;
-    margin-bottom:28px;
-  }
-  .home-field label{
-    display:block;
-    font-size:10px;
-    letter-spacing:0.14em;
-    text-transform:uppercase;
-    color:var(--muted);
-    margin-bottom:6px;
-  }
-  .home-field label .buffer-hint{
-    text-transform:none;
-    letter-spacing:0;
-  }
-  .home-field input{
-    width:100%;
-    background:transparent;
-    border:none;
-    border-bottom:1px solid var(--line);
-    font-family:'IBM Plex Mono',monospace;
-    font-size:13px;
-    font-weight:600;
-    color:var(--paper);
-    padding:6px 0 8px;
-  }
-  .home-field input:focus{
-    outline:none;
-    border-bottom-color:var(--stamp-red);
-  }
-  .travel-note{
-    font-size:10px;
-    color:var(--agent-green);
-    font-weight:600;
-    margin-top:4px;
-    min-height:12px;
-  }
 </style>
 </head>
 <body>
@@ -463,9 +423,11 @@
     Signed in as <span id="signedInEmail"></span> · <button id="signoutBtn" style="background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-family:inherit;font-size:11px;">sign out</button>
   </div>
 
-  <div class="home-field">
-    <label>Home Address <span class="buffer-hint">(used to estimate drive time to events)</span></label>
-    <input type="text" id="f-home-address" placeholder="e.g. 123 Main St, Baltimore, MD" autocomplete="street-address">
+  <button type="button" class="more-toggle" id="homeToggle" style="margin-bottom:8px;">+ Set home address (for drive-time buffers)</button>
+  <div class="field" id="homeAddressField" style="display:none; max-width:400px; margin-bottom:24px;">
+    <label>Home Address</label>
+    <input type="text" id="homeAddress" placeholder="e.g. 123 Main St, Baltimore, MD">
+    <div class="buffer-hint" style="margin-top:4px;">Saved in this browser only. Used to estimate driving time to events.</div>
   </div>
 
   <div class="dropzone" id="dropzone">
@@ -509,7 +471,6 @@
         <div class="field">
           <label>Location</label>
           <input type="text" id="f-location" value="">
-          <div class="travel-note" id="travelTimeNote"></div>
         </div>
 
         <div class="field" id="bufferField">
@@ -519,7 +480,6 @@
             <button type="button" class="chip" data-buffer="30">30 min</button>
             <button type="button" class="chip" data-buffer="60">60 min</button>
             <button type="button" class="chip" data-buffer="custom">Custom</button>
-            <button type="button" class="chip" id="travelChip" data-buffer="0" style="display:none;"></button>
           </div>
           <div class="custom-reminder-row" id="customBufferRow" style="display:none;">
             <input type="number" id="customBufferValue" min="1" placeholder="minutes">
@@ -617,18 +577,6 @@ const moreToggle = document.getElementById('moreToggle');
 const moreOptions = document.getElementById('moreOptions');
 const colorRow = document.getElementById('colorRow');
 const reminderRow = document.getElementById('reminderRow');
-const homeAddressInput = document.getElementById('f-home-address');
-const travelTimeNote = document.getElementById('travelTimeNote');
-const travelChip = document.getElementById('travelChip');
-const fLocationEl = document.getElementById('f-location');
-
-// --- Home address (remembered on this device only) ---
-const HOME_ADDRESS_KEY = 'calendarHelper.homeAddress';
-homeAddressInput.value = localStorage.getItem(HOME_ADDRESS_KEY) || '';
-homeAddressInput.addEventListener('change', () => {
-  localStorage.setItem(HOME_ADDRESS_KEY, homeAddressInput.value.trim());
-  maybeComputeTravelTime();
-});
 
 moreToggle.addEventListener('click', () => {
   const isOpen = moreOptions.style.display !== 'none';
@@ -789,86 +737,6 @@ fDateEl.addEventListener('change', () => {
   resetBufferSelection();
 });
 
-// --- Travel time (Google Routes API) ---
-// Restrict this key in Google Cloud Console to the Routes API and to the
-// domain this page is hosted on -- it's fine to ship it in client code
-// once restricted that way.
-const MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
-
-async function fetchTravelMinutes(origin, destination, departureISO) {
-  const body = {
-    origin: { address: origin },
-    destination: { address: destination },
-    travelMode: 'DRIVE'
-  };
-  // Only ask for traffic-aware prediction when the event is actually in the
-  // future -- the API rejects departureTime values in the past.
-  const departureMs = departureISO ? new Date(departureISO).getTime() : NaN;
-  if (!Number.isNaN(departureMs) && departureMs > Date.now()) {
-    body.routingPreference = 'TRAFFIC_AWARE_OPTIMAL';
-    body.departureTime = new Date(departureMs).toISOString();
-  }
-
-  let res;
-  try {
-    res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': MAPS_API_KEY,
-        'X-Goog-FieldMask': 'routes.duration'
-      },
-      body: JSON.stringify(body)
-    });
-  } catch {
-    return null; // network error -- fail silently, this feature is a bonus
-  }
-  if (!res.ok) return null;
-
-  const data = await res.json().catch(() => null);
-  const durationStr = data?.routes?.[0]?.duration; // e.g. "1532s"
-  const seconds = durationStr ? parseInt(durationStr, 10) : NaN;
-  return Number.isNaN(seconds) ? null : Math.round(seconds / 60);
-}
-
-// Recomputes drive time whenever home address, event location, date, or
-// start time change, and refreshes the "Travel" buffer chip to match.
-let travelRequestId = 0;
-async function maybeComputeTravelTime() {
-  const home = homeAddressInput.value.trim();
-  const location = fLocationEl.value.trim();
-  const thisRequest = ++travelRequestId;
-
-  if (!home || !location) {
-    travelTimeNote.textContent = '';
-    travelChip.style.display = 'none';
-    return;
-  }
-
-  travelTimeNote.textContent = 'Checking drive time…';
-
-  const date = fDateEl.value;
-  const start = fStartEl.value;
-  const departureISO = (date && start) ? `${date}T${start}:00` : null;
-  const minutes = await fetchTravelMinutes(home, location, departureISO);
-
-  if (thisRequest !== travelRequestId) return; // a newer request superseded this one
-
-  if (minutes == null) {
-    travelTimeNote.textContent = '';
-    travelChip.style.display = 'none';
-    return;
-  }
-
-  travelTimeNote.textContent = `🚗 ~${minutes} min drive from home`;
-  const roundedBuffer = Math.max(15, Math.round(minutes / 15) * 15);
-  travelChip.textContent = `Travel (${minutes}m)`;
-  travelChip.dataset.buffer = String(roundedBuffer);
-  travelChip.style.display = 'inline-block';
-}
-
-fLocationEl.addEventListener('change', maybeComputeTravelTime);
-
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 tzNote.textContent = `Opens in your calendar as ${tz}`;
 
@@ -994,7 +862,7 @@ async function handleFile(file) {
       response = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, today: todayStr })
+        body: JSON.stringify({ image: base64, today: todayStr, home: localStorage.getItem('homeAddress') || '' })
       });
     } catch (netErr) {
       throw new Error('Could not reach the extraction service (network error). Check your connection and try again.');
@@ -1036,7 +904,19 @@ async function handleFile(file) {
     baseStartTime = document.getElementById('f-start').value;
     baseDate = document.getElementById('f-date').value;
     resetBufferSelection();
-    maybeComputeTravelTime();
+
+    // If the Worker resolved a drive time from the home address, offer it
+    // as a one-tap buffer option alongside the preset 30/60/Custom chips.
+    bufferRow.querySelectorAll('.chip[data-auto="true"]').forEach(c => c.remove());
+    if (parsed.driveMinutes) {
+      const driveChip = document.createElement('button');
+      driveChip.type = 'button';
+      driveChip.className = 'chip';
+      driveChip.dataset.buffer = parsed.driveMinutes;
+      driveChip.dataset.auto = 'true';
+      driveChip.textContent = `🚗 Drive (${parsed.driveMinutes}m)`;
+      bufferRow.appendChild(driveChip);
+    }
 
     ticketWrap.style.display = 'block';
     requestAnimationFrame(() => ticketWrap.classList.add('show'));
@@ -1060,6 +940,33 @@ let tokenClient = null;
 
 const signinBtn = document.getElementById('signinBtn');
 const signinArea = document.getElementById('signinArea');
+
+// --- Home Address (for drive-time buffer suggestions) ---
+const homeToggle = document.getElementById('homeToggle');
+const homeAddressField = document.getElementById('homeAddressField');
+const homeAddressInput = document.getElementById('homeAddress');
+
+const savedHome = localStorage.getItem('homeAddress') || '';
+if (savedHome) {
+  homeAddressInput.value = savedHome;
+  homeToggle.textContent = '✓ Home address set';
+}
+
+homeToggle.addEventListener('click', () => {
+  const isOpen = homeAddressField.style.display !== 'none';
+  homeAddressField.style.display = isOpen ? 'none' : 'block';
+});
+
+homeAddressInput.addEventListener('change', () => {
+  const val = homeAddressInput.value.trim();
+  if (val) {
+    localStorage.setItem('homeAddress', val);
+    homeToggle.textContent = '✓ Home address set';
+  } else {
+    localStorage.removeItem('homeAddress');
+    homeToggle.textContent = '+ Set home address (for drive-time buffers)';
+  }
+});
 const signedInNote = document.getElementById('signedInNote');
 const signedInEmail = document.getElementById('signedInEmail');
 const signoutBtn = document.getElementById('signoutBtn');
@@ -1242,9 +1149,7 @@ resetBtn.addEventListener('click', () => {
   baseStartTime = null;
   baseDate = null;
   resetBufferSelection();
-
-  travelTimeNote.textContent = '';
-  travelChip.style.display = 'none';
+  bufferRow.querySelectorAll('.chip[data-auto="true"]').forEach(c => c.remove());
 });
 </script>
 </body>
