@@ -957,7 +957,7 @@ homeToggle.addEventListener('click', () => {
   homeAddressField.style.display = isOpen ? 'none' : 'block';
 });
 
-homeAddressInput.addEventListener('change', () => {
+homeAddressInput.addEventListener('input', () => {
   const val = homeAddressInput.value.trim();
   if (val) {
     localStorage.setItem('homeAddress', val);
